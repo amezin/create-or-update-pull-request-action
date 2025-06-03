@@ -117,7 +117,7 @@ jobs:
 
       - name: Create base branch
         id: create-branch
-        uses: actions/github-script@v7
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
         with:
           script: |
             await github.rest.git.createRef({
@@ -179,7 +179,7 @@ jobs:
           HEAD_REF: ${{ github.event.repository.default_branch }}
 
       - name: Delete base branch
-        uses: actions/github-script@v7
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
         if: always() && steps.create-branch.outcome == 'success'
         with:
           script: |
