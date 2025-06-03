@@ -1,0 +1,190 @@
+name: ci
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: '18 11 * * *'
+
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  contents: read
+
+jobs:
+  dist-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20.x
+
+      - run: npm ci
+      - run: npm run build
+
+      - id: diff
+        run: git diff --exit-code --color --ignore-space-at-eol --text dist/
+
+      - if: ${{ always() && steps.diff.outcome == 'failure' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: dist
+          path: dist/
+
+  lint:
+    runs-on: ubuntu-latest
+    permissions:
+      # required for all workflows
+      security-events: write
+      # only required for workflows in private repositories
+      actions: read
+      contents: read
+
+    env:
+      FORCE_COLOR: 1
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20.x
+
+      - run: npm ci
+      - run: npm run lint -- --format "$GITHUB_WORKSPACE/.github/eslint-multi-formatter.mjs" -o "$RUNNER_TEMP/eslint.sarif"
+      - uses: github/codeql-action/upload-sarif@ff0a06e83cb2de871e5a09832bc6a81e7276941f # v3
+        if: always()
+        with:
+          sarif_file: ${{ runner.temp }}/eslint.sarif
+          category: eslint
+
+      - run: npm run format && git diff --color --exit-code
+
+  codeql:
+    runs-on: ubuntu-latest
+    permissions:
+      # required for all workflows
+      security-events: write
+
+      # required to fetch internal or private CodeQL packs
+      packages: read
+
+      # only required for workflows in private repositories
+      actions: read
+      contents: read
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - uses: github/codeql-action/init@ff0a06e83cb2de871e5a09832bc6a81e7276941f # v3
+        with:
+          languages: javascript-typescript,actions
+          config: |
+            paths-ignore:
+              - dist
+
+      - uses: github/codeql-action/analyze@ff0a06e83cb2de871e5a09832bc6a81e7276941f # v3
+
+  test:
+    needs:
+      - lint
+      - dist-check
+
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.head.repo.node_id == github.event.pull_request.base.repo.node_id
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: Generate branch name
+        id: ref_name
+        run: |
+          REF_NAME="temp/test-branch-$GITHUB_RUN_ID"
+          echo "ref_name=$REF_NAME" >>"$GITHUB_OUTPUT"
+          echo "REF_NAME=$REF_NAME" >>"$GITHUB_ENV"
+
+      - name: Create base branch
+        id: create-branch
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.git.createRef({
+              owner: process.env.GITHUB_REPOSITORY_OWNER,
+              repo: process.env.GITHUB_REPOSITORY.split('/')[1],
+              ref: `refs/heads/${process.env.REF_NAME}`,
+              sha: '6fe7dee2f348caea37a291f67041ab205fa98f50',
+            });
+
+      - name: Create pull request
+        id: create-pr
+        uses: ./.
+        with:
+          title: Test pull request ${{ steps.ref_name.outputs.ref_name }}
+          base: ${{ steps.ref_name.outputs.ref_name }}
+          head: ${{ github.event.repository.default_branch }}
+
+      - id: create-pr-info
+        run: gh pr view "$PR_NUM" --json state,baseRefOid,baseRefName,headRefName,title | tee created.json
+        env:
+          PR_NUM: ${{ steps.create-pr.outputs.number }}
+          GH_TOKEN: ${{ github.token }}
+
+      - run: test "$(jq -r .state created.json)" = OPEN
+      - run: test "$(jq -r .title created.json)" = "Test pull request $REF_NAME"
+      - run: test "$(jq -r .baseRefOid created.json)" = 6fe7dee2f348caea37a291f67041ab205fa98f50
+      - run: test "$(jq -r .baseRefName created.json)" = "$REF_NAME"
+      - run: test "$(jq -r .headRefName created.json)" = "$HEAD_REF"
+        env:
+          HEAD_REF: ${{ github.event.repository.default_branch }}
+
+      - name: Update pull request
+        id: update-pr
+        uses: ./.
+        with:
+          title: Test pull request ${{ steps.ref_name.outputs.ref_name }} with updated title
+          body: Updated pull request body
+          base: ${{ steps.ref_name.outputs.ref_name }}
+          head: ${{ github.event.repository.default_branch }}
+
+      - run: test "$PR_NUM_1" = "$PR_NUM_2"
+        env:
+          PR_NUM_1: ${{ steps.create-pr.outputs.number }}
+          PR_NUM_2: ${{ steps.update-pr.outputs.number }}
+
+      - id: update-pr-info
+        run: gh pr view "$PR_NUM" --json state,baseRefOid,baseRefName,headRefName,title,body | tee updated.json
+        env:
+          PR_NUM: ${{ steps.update-pr.outputs.number }}
+          GH_TOKEN: ${{ github.token }}
+
+      - run: test "$(jq -r .state updated.json)" = OPEN
+      - run: test "$(jq -r .title updated.json)" = "Test pull request $REF_NAME with updated title"
+      - run: test "$(jq -r .body updated.json)" = "Updated pull request body"
+      - run: test "$(jq -r .baseRefOid updated.json)" = 6fe7dee2f348caea37a291f67041ab205fa98f50
+      - run: test "$(jq -r .baseRefName created.json)" = "$REF_NAME"
+      - run: test "$(jq -r .headRefName updated.json)" = "$HEAD_REF"
+        env:
+          HEAD_REF: ${{ github.event.repository.default_branch }}
+
+      - name: Delete base branch
+        uses: actions/github-script@v7
+        if: always() && steps.create-branch.outcome == 'success'
+        with:
+          script: |
+            await github.rest.git.deleteRef({
+              owner: process.env.GITHUB_REPOSITORY_OWNER,
+              repo: process.env.GITHUB_REPOSITORY.split('/')[1],
+              ref: `heads/${process.env.REF_NAME}`,
+            });
