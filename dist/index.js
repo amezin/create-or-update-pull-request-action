@@ -30051,6 +30051,7 @@ class Repository {
             title,
             body,
         });
+        octokit.log.info(`Created pull request #${data.number}: ${data.html_url}`);
         return data;
     }
     async updatePullRequest(pull_number, title, body) {
@@ -30062,6 +30063,7 @@ class Repository {
             title,
             body,
         });
+        octokit.log.info(`Updated pull request #${data.number}: ${data.html_url}`);
         return data;
     }
 }
