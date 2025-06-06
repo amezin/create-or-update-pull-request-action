@@ -117,15 +117,10 @@ jobs:
 
       - name: Create base branch
         id: create-branch
-        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
-        with:
-          script: |
-            await github.rest.git.createRef({
-              owner: process.env.GITHUB_REPOSITORY_OWNER,
-              repo: process.env.GITHUB_REPOSITORY.split('/')[1],
-              ref: `refs/heads/${process.env.REF_NAME}`,
-              sha: '6fe7dee2f348caea37a291f67041ab205fa98f50',
-            });
+        run: |
+          git fetch origin 6fe7dee2f348caea37a291f67041ab205fa98f50
+          git branch "$REF_NAME" 6fe7dee2f348caea37a291f67041ab205fa98f50
+          git push origin "$REF_NAME"
 
       - name: Create pull request
         id: create-pr
