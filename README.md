@@ -48,7 +48,7 @@ _Default_: `${{ github.event.repository.default_branch }}` - the default branch 
 
 GitHub API token to use.
 
-Must have `contents: write` permission.
+Must have `pull-requests: write` permission.
 
 _Default_: `${{ github.token }}`
 
