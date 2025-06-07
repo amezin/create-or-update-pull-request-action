@@ -9,7 +9,7 @@ on:
     branches:
       - main
   schedule:
-    - cron: '18 11 * * *'
+    - cron: '18 11 * * 6'
 
 defaults:
   run:
