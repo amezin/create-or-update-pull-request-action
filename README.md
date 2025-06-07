@@ -13,6 +13,8 @@ requests for modified files, but can be used standalone for other purposes too.
 
 ## Usage example
 
+A workflow that generates a file and adds it to the main branch through a pull request:
+
 https://github.com/amezin/pull-request-generator/blob/main/.github/workflows/make-pull-request.yml
 
 ## Inputs
