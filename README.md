@@ -1,7 +1,7 @@
 # Create or Update Pull Request
 
 Create or update a pull request through GitHub API.
-Or, in other words, ensure an open pull request with the specified properties exists.
+Or, in other words, ensure an open pull request with the specified `head` and `base` branches exists.
 
 If the pull request does not exist, it will be created.
 
@@ -34,6 +34,14 @@ Pull request title. No default value. Required input.
 
 The description of the pull request.
 
+### `update`
+
+`true`: update pull request's `title` and `body` if the pull request already exists.
+
+`false`: don't update existing pull requests.
+
+_Default_: `true`
+
 ### `head`
 
 Source branch name, without `refs/heads/`.
@@ -63,12 +71,12 @@ _Default_: `${{ github.token }}`
 
 ### `number`
 
-The number of the created/updated pull request
+The number of the created/updated pull request.
 
 ### `url`
 
-API URL of the created/updated pull request
+REST API URL of the created/updated pull request.
 
 ### `html_url`
 
-Browser URL of the created/updated pull request
+Browser URL of the created/updated pull request.

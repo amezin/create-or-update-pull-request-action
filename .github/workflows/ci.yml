@@ -118,8 +118,7 @@ jobs:
           base: ${{ steps.ref_name.outputs.ref_name }}
           head: ${{ github.event.repository.default_branch }}
 
-      - id: create-pr-info
-        run: gh pr view "$PR_NUM" --json state,baseRefOid,baseRefName,headRefName,title | tee created.json
+      - run: gh pr view "$PR_NUM" --json state,baseRefOid,baseRefName,headRefName,title | tee created.json
         env:
           PR_NUM: ${{ steps.create-pr.outputs.number }}
           GH_TOKEN: ${{ github.token }}
@@ -146,8 +145,7 @@ jobs:
           PR_NUM_1: ${{ steps.create-pr.outputs.number }}
           PR_NUM_2: ${{ steps.update-pr.outputs.number }}
 
-      - id: update-pr-info
-        run: gh pr view "$PR_NUM" --json state,baseRefOid,baseRefName,headRefName,title,body | tee updated.json
+      - run: gh pr view "$PR_NUM" --json state,baseRefOid,baseRefName,headRefName,title,body | tee updated.json
         env:
           PR_NUM: ${{ steps.update-pr.outputs.number }}
           GH_TOKEN: ${{ github.token }}
@@ -160,6 +158,28 @@ jobs:
       - run: test "$(jq -r .headRefName updated.json)" = "$HEAD_REF"
         env:
           HEAD_REF: ${{ github.event.repository.default_branch }}
+
+      - name: Don't update pull request
+        id: dont-update-pr
+        uses: ./.
+        with:
+          title: Test pull request ${{ steps.ref_name.outputs.ref_name }} title update ignored
+          body: Pull request body update ignored
+          base: ${{ steps.ref_name.outputs.ref_name }}
+          head: ${{ github.event.repository.default_branch }}
+          update: false
+
+      - run: test "$PR_NUM_1" = "$PR_NUM_2"
+        env:
+          PR_NUM_1: ${{ steps.update-pr.outputs.number }}
+          PR_NUM_2: ${{ steps.dont-update-pr.outputs.number }}
+
+      - run: gh pr view "$PR_NUM" --json state,baseRefOid,baseRefName,headRefName,title,body | tee not-updated.json
+        env:
+          PR_NUM: ${{ steps.dont-update-pr.outputs.number }}
+          GH_TOKEN: ${{ github.token }}
+
+      - run: diff -u updated.json not-updated.json
 
       - name: Delete test branch
         if: always() && steps.create-branch.outcome == 'success'

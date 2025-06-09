@@ -30066,6 +30066,18 @@ class Repository {
         octokit.log.info(`Updated pull request #${data.number}: ${data.html_url}`);
         return data;
     }
+    async createOrUpdatePullRequest(base, head, title, body, update) {
+        const existing = await this.findOpenPullRequest(base, head);
+        if (!existing) {
+            return await this.createPullRequest(base, head, title, body);
+        }
+        if (update) {
+            return await this.updatePullRequest(existing.number, title, body);
+        }
+        else {
+            return existing;
+        }
+    }
 }
 async function run() {
     const log = {
@@ -30082,15 +30094,13 @@ async function run() {
     const head = core.getInput('head', { required: true });
     const title = core.getInput('title', { required: true });
     const body = core.getInput('body', { required: true });
+    const update = core.getBooleanInput('update', { required: true });
     const github = (0, github_1.getOctokit)(token, { log }, plugin_request_log_1.requestLog);
     const repo = new Repository(github, repository);
-    const existing = await repo.findOpenPullRequest(base, head);
-    const updated = existing
-        ? await repo.updatePullRequest(existing.number, title, body)
-        : await repo.createPullRequest(base, head, title, body);
-    core.setOutput('number', updated.number);
-    core.setOutput('url', updated.url);
-    core.setOutput('html_url', updated.html_url);
+    const pr = await repo.createOrUpdatePullRequest(base, head, title, body, update);
+    core.setOutput('number', pr.number);
+    core.setOutput('url', pr.url);
+    core.setOutput('html_url', pr.html_url);
 }
 run().catch((error) => {
     core.setFailed(String(error));

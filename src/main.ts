@@ -80,6 +80,26 @@ class Repository {
 
         return data;
     }
+
+    async createOrUpdatePullRequest(
+        base: string,
+        head: string,
+        title: string,
+        body: string,
+        update: boolean
+    ) {
+        const existing = await this.findOpenPullRequest(base, head);
+
+        if (!existing) {
+            return await this.createPullRequest(base, head, title, body);
+        }
+
+        if (update) {
+            return await this.updatePullRequest(existing.number, title, body);
+        } else {
+            return existing;
+        }
+    }
 }
 
 async function run() {
@@ -98,18 +118,22 @@ async function run() {
     const head = core.getInput('head', { required: true });
     const title = core.getInput('title', { required: true });
     const body = core.getInput('body', { required: true });
+    const update = core.getBooleanInput('update', { required: true });
 
     const github = getOctokit(token, { log }, requestLog);
     const repo = new Repository(github, repository);
 
-    const existing = await repo.findOpenPullRequest(base, head);
-    const updated = existing
-        ? await repo.updatePullRequest(existing.number, title, body)
-        : await repo.createPullRequest(base, head, title, body);
+    const pr = await repo.createOrUpdatePullRequest(
+        base,
+        head,
+        title,
+        body,
+        update
+    );
 
-    core.setOutput('number', updated.number);
-    core.setOutput('url', updated.url);
-    core.setOutput('html_url', updated.html_url);
+    core.setOutput('number', pr.number);
+    core.setOutput('url', pr.url);
+    core.setOutput('html_url', pr.html_url);
 }
 
 run().catch((error: unknown) => {
