@@ -23,8 +23,7 @@ https://github.com/amezin/pull-request-generator/blob/main/.github/workflows/mak
 
 The owner and repository name, in `owner/name` format.
 
-_Default_: `${{ github.repository }}` - the repository where the workflow was
-triggered.
+**Default**: `${{ github.repository }}` - the repository where the workflow was triggered.
 
 ### `title`
 
@@ -40,27 +39,28 @@ The description of the pull request.
 
 `false`: don't update existing pull requests.
 
-_Default_: `true`
+**Default**: `true`
 
 ### `draft`
 
 `true`: the pull request will be created as a draft.
 
-This input will be ignored if the pull request already exists, regardless of `update` flag.
+> [!NOTE]
+> This input will be ignored if the pull request already exists, regardless of `update` flag.
 
-_Default_: `false`
+**Default**: `false`
 
 ### `head`
 
-Source branch name, without `refs/heads/`.
+Source branch name, **without** `refs/heads/`.
 
-_Default_: `${{ github.ref_name }}` - the name of the branch that triggered the workflow run.
+**Default**: `${{ github.ref_name }}` - the name of the branch that triggered the workflow run.
 
 ### `base`
 
-Target branch name, without `refs/heads/`.
+Target branch name, **without** `refs/heads/`.
 
-_Default_: `${{ github.event.repository.default_branch }}` - the default branch of the repository.
+**Default**: `${{ github.event.repository.default_branch }}` - the default branch of the repository.
 
 ### `github-token`
 
@@ -68,7 +68,7 @@ GitHub API token to use.
 
 Must have `pull-requests: write` permission.
 
-_Default_: `${{ github.token }}`
+**Default**: `${{ github.token }}`
 
 > [!NOTE]
 > If you want other GitHub Actions workflows to be triggered from `pull_request` event,
