@@ -25,6 +25,11 @@ inputs:
     default: 'true'
     required: true
 
+  draft:
+    description: Create a draft pull request. Ignored for already existing pull requests
+    default: 'false'
+    required: true
+
   head:
     description: Source branch name, without `refs/heads/`
     default: ${{ github.ref_name }}

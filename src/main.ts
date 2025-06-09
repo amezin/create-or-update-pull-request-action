@@ -43,7 +43,8 @@ class Repository {
         base: string,
         head: string,
         title: string,
-        body: string
+        body: string,
+        draft: boolean
     ) {
         const { octokit, owner, repo } = this;
 
@@ -54,6 +55,7 @@ class Repository {
             base,
             title,
             body,
+            draft,
         });
 
         octokit.log.info(
@@ -86,12 +88,13 @@ class Repository {
         head: string,
         title: string,
         body: string,
-        update: boolean
+        update: boolean,
+        draft: boolean
     ) {
         const existing = await this.findOpenPullRequest(base, head);
 
         if (!existing) {
-            return await this.createPullRequest(base, head, title, body);
+            return await this.createPullRequest(base, head, title, body, draft);
         }
 
         if (update) {
@@ -119,6 +122,7 @@ async function run() {
     const title = core.getInput('title', { required: true });
     const body = core.getInput('body', { required: true });
     const update = core.getBooleanInput('update', { required: true });
+    const draft = core.getBooleanInput('draft', { required: true });
 
     const github = getOctokit(token, { log }, requestLog);
     const repo = new Repository(github, repository);
@@ -128,7 +132,8 @@ async function run() {
         head,
         title,
         body,
-        update
+        update,
+        draft
     );
 
     core.setOutput('number', pr.number);

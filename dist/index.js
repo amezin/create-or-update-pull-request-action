@@ -30041,7 +30041,7 @@ class Repository {
         });
         return data[0];
     }
-    async createPullRequest(base, head, title, body) {
+    async createPullRequest(base, head, title, body, draft) {
         const { octokit, owner, repo } = this;
         const { data } = await octokit.rest.pulls.create({
             owner,
@@ -30050,6 +30050,7 @@ class Repository {
             base,
             title,
             body,
+            draft,
         });
         octokit.log.info(`Created pull request #${data.number}: ${data.html_url}`);
         return data;
@@ -30066,10 +30067,10 @@ class Repository {
         octokit.log.info(`Updated pull request #${data.number}: ${data.html_url}`);
         return data;
     }
-    async createOrUpdatePullRequest(base, head, title, body, update) {
+    async createOrUpdatePullRequest(base, head, title, body, update, draft) {
         const existing = await this.findOpenPullRequest(base, head);
         if (!existing) {
-            return await this.createPullRequest(base, head, title, body);
+            return await this.createPullRequest(base, head, title, body, draft);
         }
         if (update) {
             return await this.updatePullRequest(existing.number, title, body);
@@ -30095,9 +30096,10 @@ async function run() {
     const title = core.getInput('title', { required: true });
     const body = core.getInput('body', { required: true });
     const update = core.getBooleanInput('update', { required: true });
+    const draft = core.getBooleanInput('draft', { required: true });
     const github = (0, github_1.getOctokit)(token, { log }, plugin_request_log_1.requestLog);
     const repo = new Repository(github, repository);
-    const pr = await repo.createOrUpdatePullRequest(base, head, title, body, update);
+    const pr = await repo.createOrUpdatePullRequest(base, head, title, body, update, draft);
     core.setOutput('number', pr.number);
     core.setOutput('url', pr.url);
     core.setOutput('html_url', pr.html_url);

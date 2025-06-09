@@ -42,6 +42,14 @@ The description of the pull request.
 
 _Default_: `true`
 
+### `draft`
+
+`true`: the pull request will be created as a draft.
+
+This input will be ignored if the pull request already exists, regardless of `update` flag.
+
+_Default_: `false`
+
 ### `head`
 
 Source branch name, without `refs/heads/`.
