@@ -30075,6 +30075,9 @@ class Repository {
         if (!update) {
             return existing;
         }
+        if (existing.title === title && existing.body === body) {
+            return existing;
+        }
         return await this.updatePullRequest(existing.number, title, body);
     }
 }
