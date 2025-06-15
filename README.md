@@ -88,3 +88,11 @@ REST API URL of the created/updated pull request.
 ### `html_url`
 
 Browser URL of the created/updated pull request.
+
+### `pull_request`
+
+Pull request object as JSON. Can be passed to `fromJSON()` function to extract the necessary data.
+
+See https://docs.github.com/en/rest/pulls/pulls#get-a-pull-request
+
+[`fromJSON()`]: https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/evaluate-expressions-in-workflows-and-actions#fromjson

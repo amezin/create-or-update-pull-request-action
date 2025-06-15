@@ -97,11 +97,11 @@ class Repository {
             return await this.createPullRequest(base, head, title, body, draft);
         }
 
-        if (update) {
-            return await this.updatePullRequest(existing.number, title, body);
-        } else {
+        if (!update) {
             return existing;
         }
+
+        return await this.updatePullRequest(existing.number, title, body);
     }
 }
 
@@ -139,6 +139,7 @@ async function run() {
     core.setOutput('number', pr.number);
     core.setOutput('url', pr.url);
     core.setOutput('html_url', pr.html_url);
+    core.setOutput('pull_request', JSON.stringify(pr, undefined, ' '));
 }
 
 run().catch((error: unknown) => {

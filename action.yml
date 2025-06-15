@@ -55,6 +55,9 @@ outputs:
   html_url:
     description: Browser URL of the created/updated pull request
 
+  pull_request:
+    description: Pull request object as JSON
+
 runs:
   using: node20
   main: dist/index.js

@@ -125,13 +125,38 @@ jobs:
           GH_TOKEN: ${{ github.token }}
 
       - run: test "$(jq -r .state created.json)" = OPEN
+      - run: test "$VALUE" = open
+        env:
+          VALUE: ${{ fromJSON(steps.create-pr.outputs.pull_request).state }}
+
       - run: test "$(jq -r .isDraft created.json)" = "true"
+      - run: test "$VALUE" = "true"
+        env:
+          VALUE: ${{ fromJSON(steps.create-pr.outputs.pull_request).draft }}
+
       - run: test "$(jq -r .title created.json)" = "Test pull request $REF_NAME"
+      - run: test "$VALUE" = "Test pull request $REF_NAME"
+        env:
+          VALUE: ${{ fromJSON(steps.create-pr.outputs.pull_request).title }}
+
       - run: test "$(jq -r .baseRefOid created.json)" = 6fe7dee2f348caea37a291f67041ab205fa98f50
+      - run: test "$VALUE" = 6fe7dee2f348caea37a291f67041ab205fa98f50
+        env:
+          VALUE: ${{ fromJSON(steps.create-pr.outputs.pull_request).base.sha }}
+
       - run: test "$(jq -r .baseRefName created.json)" = "$REF_NAME"
+      - run: test "$VALUE" = "$REF_NAME"
+        env:
+          VALUE: ${{ fromJSON(steps.create-pr.outputs.pull_request).base.ref }}
+
       - run: test "$(jq -r .headRefName created.json)" = "$HEAD_REF"
         env:
           HEAD_REF: ${{ github.event.repository.default_branch }}
+
+      - run: test "$VALUE" = "$HEAD_REF"
+        env:
+          HEAD_REF: ${{ github.event.repository.default_branch }}
+          VALUE: ${{ fromJSON(steps.create-pr.outputs.pull_request).head.ref }}
 
       - name: Update pull request
         id: update-pr
@@ -153,14 +178,43 @@ jobs:
           GH_TOKEN: ${{ github.token }}
 
       - run: test "$(jq -r .state updated.json)" = OPEN
+      - run: test "$VALUE" = open
+        env:
+          VALUE: ${{ fromJSON(steps.update-pr.outputs.pull_request).state }}
+
       - run: test "$(jq -r .isDraft created.json)" = "true"
+      - run: test "$VALUE" = "true"
+        env:
+          VALUE: ${{ fromJSON(steps.update-pr.outputs.pull_request).draft }}
+
       - run: test "$(jq -r .title updated.json)" = "Test pull request $REF_NAME with updated title"
+      - run: test "$VALUE" = "Test pull request $REF_NAME with updated title"
+        env:
+          VALUE: ${{ fromJSON(steps.update-pr.outputs.pull_request).title }}
+
       - run: test "$(jq -r .body updated.json)" = "Updated pull request body"
+      - run: test "$VALUE" = "Updated pull request body"
+        env:
+          VALUE: ${{ fromJSON(steps.update-pr.outputs.pull_request).body }}
+
       - run: test "$(jq -r .baseRefOid updated.json)" = 6fe7dee2f348caea37a291f67041ab205fa98f50
+      - run: test "$VALUE" = 6fe7dee2f348caea37a291f67041ab205fa98f50
+        env:
+          VALUE: ${{ fromJSON(steps.update-pr.outputs.pull_request).base.sha }}
+
       - run: test "$(jq -r .baseRefName created.json)" = "$REF_NAME"
+      - run: test "$VALUE" = "$REF_NAME"
+        env:
+          VALUE: ${{ fromJSON(steps.update-pr.outputs.pull_request).base.ref }}
+
       - run: test "$(jq -r .headRefName updated.json)" = "$HEAD_REF"
         env:
           HEAD_REF: ${{ github.event.repository.default_branch }}
+
+      - run: test "$VALUE" = "$HEAD_REF"
+        env:
+          HEAD_REF: ${{ github.event.repository.default_branch }}
+          VALUE: ${{ fromJSON(steps.update-pr.outputs.pull_request).head.ref }}
 
       - name: Don't update pull request
         id: dont-update-pr
@@ -183,6 +237,35 @@ jobs:
           GH_TOKEN: ${{ github.token }}
 
       - run: diff -u updated.json not-updated.json
+
+      - run: test "$VALUE" = open
+        env:
+          VALUE: ${{ fromJSON(steps.dont-update-pr.outputs.pull_request).state }}
+
+      - run: test "$VALUE" = "true"
+        env:
+          VALUE: ${{ fromJSON(steps.dont-update-pr.outputs.pull_request).draft }}
+
+      - run: test "$VALUE" = "Test pull request $REF_NAME with updated title"
+        env:
+          VALUE: ${{ fromJSON(steps.dont-update-pr.outputs.pull_request).title }}
+
+      - run: test "$VALUE" = "Updated pull request body"
+        env:
+          VALUE: ${{ fromJSON(steps.dont-update-pr.outputs.pull_request).body }}
+
+      - run: test "$VALUE" = 6fe7dee2f348caea37a291f67041ab205fa98f50
+        env:
+          VALUE: ${{ fromJSON(steps.dont-update-pr.outputs.pull_request).base.sha }}
+
+      - run: test "$VALUE" = "$REF_NAME"
+        env:
+          VALUE: ${{ fromJSON(steps.dont-update-pr.outputs.pull_request).base.ref }}
+
+      - run: test "$VALUE" = "$HEAD_REF"
+        env:
+          HEAD_REF: ${{ github.event.repository.default_branch }}
+          VALUE: ${{ fromJSON(steps.dont-update-pr.outputs.pull_request).head.ref }}
 
       - name: Delete test branch
         if: always() && steps.create-branch.outcome == 'success'
