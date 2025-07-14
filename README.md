@@ -91,7 +91,7 @@ Browser URL of the created/updated pull request.
 
 ### `pull_request`
 
-Pull request object as JSON. Can be passed to `fromJSON()` function to extract the necessary data.
+Pull request object as JSON. Can be passed to [`fromJSON()`] function to extract the necessary data.
 
 See https://docs.github.com/en/rest/pulls/pulls#get-a-pull-request
 
