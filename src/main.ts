@@ -1,8 +1,7 @@
 import { inspect } from 'node:util';
 
 import * as core from '@actions/core';
-import { getOctokit } from '@actions/github';
-import { requestLog } from '@octokit/plugin-request-log';
+import { getOctokit } from '@amezin/js-actions-octokit';
 
 class Repository {
     private readonly octokit: ReturnType<typeof getOctokit>;
@@ -110,15 +109,6 @@ class Repository {
 }
 
 async function run() {
-    const log = {
-        debug: core.isDebug()
-            ? console.debug.bind(console)
-            : (..._args: unknown[]) => {},
-        info: console.info.bind(console),
-        warn: console.warn.bind(console),
-        error: console.error.bind(console),
-    };
-
     const token = core.getInput('github-token', { required: true });
     const repository = core.getInput('repository', { required: true });
     const base = core.getInput('base', { required: true });
@@ -128,7 +118,7 @@ async function run() {
     const update = core.getBooleanInput('update', { required: true });
     const draft = core.getBooleanInput('draft', { required: true });
 
-    const github = getOctokit(token, { log }, requestLog);
+    const github = getOctokit(token);
     const repo = new Repository(github, repository);
 
     const pr = await repo.createOrUpdatePullRequest(
