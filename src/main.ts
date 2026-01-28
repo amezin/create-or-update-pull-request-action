@@ -58,6 +58,7 @@ class Repository {
         });
 
         octokit.log.info(
+            // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
             `Created pull request #${data.number}: ${data.html_url}`
         );
 
@@ -76,6 +77,7 @@ class Repository {
         });
 
         octokit.log.info(
+            // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
             `Updated pull request #${data.number}: ${data.html_url}`
         );
 
