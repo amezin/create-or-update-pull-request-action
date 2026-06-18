@@ -16,7 +16,7 @@
   },
   "type": "module",
   "dependencies": {
-    "@actions/core": "3.0.0",
+    "@actions/core": "3.0.1",
     "@amezin/js-actions-octokit": "5.1.2"
   },
   "devDependencies": {
