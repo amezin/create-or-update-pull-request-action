@@ -21,7 +21,7 @@
   },
   "devDependencies": {
     "@amezin/eslint-config-js-actions": "5.1.2",
-    "@types/node": "24.10.9",
+    "@types/node": "24.13.2",
     "@vercel/ncc": "0.44.0",
     "typescript": "6.0.3"
   },
