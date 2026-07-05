@@ -1,7 +1,9 @@
 import { inspect } from 'node:util';
 
 import * as core from '@actions/core';
-import { getOctokit } from '@amezin/js-actions-octokit';
+
+import { getOctokit } from './octokit.js';
+import pkg from '../package.json' with { type: 'json' };
 
 class Repository {
     private readonly octokit: ReturnType<typeof getOctokit>;
@@ -120,7 +122,10 @@ async function run() {
     const update = core.getBooleanInput('update', { required: true });
     const draft = core.getBooleanInput('draft', { required: true });
 
-    const github = getOctokit(token);
+    const github = getOctokit(token, {
+        userAgent: `${pkg.name}/v${pkg.version}`,
+    });
+
     const repo = new Repository(github, repository);
 
     const pr = await repo.createOrUpdatePullRequest(
