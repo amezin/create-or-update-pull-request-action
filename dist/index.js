@@ -30689,6 +30689,8 @@ function qstring(str) {
 /************************************************************************/
 var __webpack_exports__ = {};
 
+;// CONCATENATED MODULE: external "node:timers/promises"
+const promises_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:timers/promises");
 // EXTERNAL MODULE: external "node:util"
 var external_node_util_ = __nccwpck_require__(7975);
 var external_node_util_default = /*#__PURE__*/__nccwpck_require__.n(external_node_util_);
@@ -38369,6 +38371,9 @@ const package_namespaceObject = /*#__PURE__*/JSON.parse('{"UU":"@amezin/create-o
 
 
 
+
+const POLL_INTERVAL_MS = 1000;
+const POLL_REPEATS = 10;
 class Repository {
     octokit;
     owner;
@@ -38394,6 +38399,15 @@ class Repository {
             per_page: 1,
         });
         return data[0];
+    }
+    async getPullRequest(pull_number) {
+        const { octokit, owner, repo } = this;
+        const { data } = await octokit.rest.pulls.get({
+            owner,
+            repo,
+            pull_number,
+        });
+        return data;
     }
     async createPullRequest({ base, head, headSha, title, body, draft, }) {
         const { octokit, owner, repo } = this;
@@ -38421,8 +38435,17 @@ class Repository {
             // Note: after branch update, we always perform PR update,
             // to get fully updated PR object (full head SHA, merge SHA, etc)
             await this.updateRef(`heads/${pull.head.ref}`, headSha, true);
+            let updated = await this.getPullRequest(pull.number);
+            for (let i = 0; i < POLL_REPEATS && pull.head.sha === updated.head.sha; i++) {
+                await (0,promises_namespaceObject.setTimeout)(POLL_INTERVAL_MS);
+                updated = await this.getPullRequest(pull.number);
+            }
+            if (pull.head.sha === updated.head.sha) {
+                throw new Error('Failed to update pull request head');
+            }
+            pull = updated;
         }
-        else if (pull.title === title && pull.body === body) {
+        if (pull.title === title && pull.body === body) {
             return pull;
         }
         const { data } = await octokit.rest.pulls.update({

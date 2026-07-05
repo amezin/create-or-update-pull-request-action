@@ -1,9 +1,13 @@
+import { setTimeout } from 'node:timers/promises';
 import { inspect } from 'node:util';
 
 import * as core from '@actions/core';
 
 import { getOctokit } from './octokit.js';
 import pkg from '../package.json' with { type: 'json' };
+
+const POLL_INTERVAL_MS = 1000;
+const POLL_REPEATS = 10;
 
 type UpdateOptions = {
     title: string;
@@ -54,6 +58,18 @@ class Repository {
         return data[0];
     }
 
+    async getPullRequest(pull_number: number) {
+        const { octokit, owner, repo } = this;
+
+        const { data } = await octokit.rest.pulls.get({
+            owner,
+            repo,
+            pull_number,
+        });
+
+        return data;
+    }
+
     async createPullRequest({
         base,
         head,
@@ -88,7 +104,8 @@ class Repository {
 
     async updatePullRequest(
         pull: NonNullable<
-            Awaited<ReturnType<Repository['findOpenPullRequest']>>
+            | Awaited<ReturnType<Repository['getPullRequest']>>
+            | Awaited<ReturnType<Repository['findOpenPullRequest']>>
         >,
         options: UpdateOptions
     ) {
@@ -99,7 +116,26 @@ class Repository {
             // Note: after branch update, we always perform PR update,
             // to get fully updated PR object (full head SHA, merge SHA, etc)
             await this.updateRef(`heads/${pull.head.ref}`, headSha, true);
-        } else if (pull.title === title && pull.body === body) {
+
+            let updated = await this.getPullRequest(pull.number);
+
+            for (
+                let i = 0;
+                i < POLL_REPEATS && pull.head.sha === updated.head.sha;
+                i++
+            ) {
+                await setTimeout(POLL_INTERVAL_MS);
+                updated = await this.getPullRequest(pull.number);
+            }
+
+            if (pull.head.sha === updated.head.sha) {
+                throw new Error('Failed to update pull request head');
+            }
+
+            pull = updated;
+        }
+
+        if (pull.title === title && pull.body === body) {
             return pull;
         }
 

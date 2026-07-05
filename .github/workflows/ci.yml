@@ -105,192 +105,225 @@ jobs:
       - run: actionlint -verbose -color
 
   test:
+    if: >-
+      github.event.pull_request.head.repo.node_id == github.event.pull_request.base.repo.node_id
+      || !github.event.pull_request
+
     needs:
       - dist-check
 
     runs-on: ubuntu-latest
-    if: github.event.pull_request.head.repo.node_id == github.event.pull_request.base.repo.node_id
+
     permissions:
       contents: write
       pull-requests: write
 
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - head: head_sha
+            draft: no_draft
+          - head: no_head_sha
+            draft: draft
+
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      GH_PR_FIELDS: number,title,body,isDraft,state,headRefName,headRefOid,baseRefName,url
+
+      COMMIT_BRANCH_NAME: testing-commit-${{ github.run_id }}-${{ strategy.job-index }}
+      PR_HEAD_BRANCH: testing-pr-${{ github.run_id }}-${{ strategy.job-index }}
+      PR_BASE_BRANCH: main
+      PR_DRAFT: ${{ matrix.draft == 'draft' }}
+
+      TITLE1: Test pull request ${{ matrix.draft }} ${{ matrix.head }} title
+      BODY1: Test pull request ${{ matrix.draft }} ${{ matrix.head }} body
+
+      TITLE2: Test pull request ${{ matrix.draft }} ${{ matrix.head }} title 2
+      BODY2: Test pull request ${{ matrix.draft }} ${{ matrix.head }} body 2
+
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - name: 'Checkout: action source'
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
+          persist-credentials: false
+
+      - name: 'Checkout: working directory for tests'
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ env.PR_BASE_BRANCH }}
+          path: testing
           persist-credentials: true
 
-      - name: Generate branch name
-        id: ref_name
+      - name: Configure Git
         run: |
-          REF_NAME="temp/test-branch-$GITHUB_RUN_ID"
-          echo "ref_name=$REF_NAME" >>"$GITHUB_OUTPUT"
-          echo "REF_NAME=$REF_NAME" >>"$GITHUB_ENV"
+          git config --global user.name 'Test'
+          git config --global user.email 'test@example.com'
 
-      - name: Create base branch
-        id: create-branch
+      - name: Add a test commit
+        working-directory: testing
         run: |
-          git fetch origin 6fe7dee2f348caea37a291f67041ab205fa98f50
-          git branch "$REF_NAME" 6fe7dee2f348caea37a291f67041ab205fa98f50
-          git push origin "$REF_NAME"
+          echo "BASE_SHA=$(git rev-parse HEAD)" >>"$GITHUB_ENV"
+          git checkout -b "$COMMIT_BRANCH_NAME"
+          echo Test >test-file-1.txt
+          git add test-file-1.txt
+          git commit -m 'Test Commit 1'
+          git push -u origin "$COMMIT_BRANCH_NAME"
+          echo "COMMIT1_SHA=$(git rev-parse HEAD)" >>"$GITHUB_ENV"
+
+      - name: Create PR head branch
+        if: ${{ matrix.head == 'no_head_sha' }}
+        working-directory: testing
+        run: |
+          git checkout -b "$PR_HEAD_BRANCH"
+          git push -u origin "$PR_HEAD_BRANCH"
 
       - name: Create pull request
-        id: create-pr
+        id: pr-create
         uses: ./.
         with:
-          title: Test pull request ${{ steps.ref_name.outputs.ref_name }}
-          base: ${{ steps.ref_name.outputs.ref_name }}
-          head: ${{ github.event.repository.default_branch }}
-          draft: true
-
-      - run: gh pr view "$PR_NUM" --json state,isDraft,baseRefOid,baseRefName,headRefName,title | tee created.json
-        env:
-          PR_NUM: ${{ steps.create-pr.outputs.number }}
-          GH_TOKEN: ${{ github.token }}
-
-      - run: test "$(jq -r .state created.json)" = OPEN
-      - run: test "$VALUE" = open
-        env:
-          VALUE: ${{ fromJSON(steps.create-pr.outputs.pull_request).state }}
-
-      - run: test "$(jq -r .isDraft created.json)" = "true"
-      - run: test "$VALUE" = "true"
-        env:
-          VALUE: ${{ fromJSON(steps.create-pr.outputs.pull_request).draft }}
-
-      - run: test "$(jq -r .title created.json)" = "Test pull request $REF_NAME"
-      - run: test "$VALUE" = "Test pull request $REF_NAME"
-        env:
-          VALUE: ${{ fromJSON(steps.create-pr.outputs.pull_request).title }}
-
-      - run: test "$(jq -r .baseRefOid created.json)" = 6fe7dee2f348caea37a291f67041ab205fa98f50
-      - run: test "$VALUE" = 6fe7dee2f348caea37a291f67041ab205fa98f50
-        env:
-          VALUE: ${{ fromJSON(steps.create-pr.outputs.pull_request).base.sha }}
-
-      - run: test "$(jq -r .baseRefName created.json)" = "$REF_NAME"
-      - run: test "$VALUE" = "$REF_NAME"
-        env:
-          VALUE: ${{ fromJSON(steps.create-pr.outputs.pull_request).base.ref }}
-
-      - run: test "$(jq -r .headRefName created.json)" = "$HEAD_REF"
-        env:
-          HEAD_REF: ${{ github.event.repository.default_branch }}
-
-      - run: test "$VALUE" = "$HEAD_REF"
-        env:
-          HEAD_REF: ${{ github.event.repository.default_branch }}
-          VALUE: ${{ fromJSON(steps.create-pr.outputs.pull_request).head.ref }}
-
-      - name: Update pull request
-        id: update-pr
-        uses: ./.
-        with:
-          title: Test pull request ${{ steps.ref_name.outputs.ref_name }} with updated title
-          body: Updated pull request body
-          base: ${{ steps.ref_name.outputs.ref_name }}
-          head: ${{ github.event.repository.default_branch }}
-
-      - run: test "$PR_NUM_1" = "$PR_NUM_2"
-        env:
-          PR_NUM_1: ${{ steps.create-pr.outputs.number }}
-          PR_NUM_2: ${{ steps.update-pr.outputs.number }}
-
-      - run: gh pr view "$PR_NUM" --json state,isDraft,baseRefOid,baseRefName,headRefName,title,body | tee updated.json
-        env:
-          PR_NUM: ${{ steps.update-pr.outputs.number }}
-          GH_TOKEN: ${{ github.token }}
-
-      - run: test "$(jq -r .state updated.json)" = OPEN
-      - run: test "$VALUE" = open
-        env:
-          VALUE: ${{ fromJSON(steps.update-pr.outputs.pull_request).state }}
-
-      - run: test "$(jq -r .isDraft created.json)" = "true"
-      - run: test "$VALUE" = "true"
-        env:
-          VALUE: ${{ fromJSON(steps.update-pr.outputs.pull_request).draft }}
-
-      - run: test "$(jq -r .title updated.json)" = "Test pull request $REF_NAME with updated title"
-      - run: test "$VALUE" = "Test pull request $REF_NAME with updated title"
-        env:
-          VALUE: ${{ fromJSON(steps.update-pr.outputs.pull_request).title }}
-
-      - run: test "$(jq -r .body updated.json)" = "Updated pull request body"
-      - run: test "$VALUE" = "Updated pull request body"
-        env:
-          VALUE: ${{ fromJSON(steps.update-pr.outputs.pull_request).body }}
-
-      - run: test "$(jq -r .baseRefOid updated.json)" = 6fe7dee2f348caea37a291f67041ab205fa98f50
-      - run: test "$VALUE" = 6fe7dee2f348caea37a291f67041ab205fa98f50
-        env:
-          VALUE: ${{ fromJSON(steps.update-pr.outputs.pull_request).base.sha }}
-
-      - run: test "$(jq -r .baseRefName created.json)" = "$REF_NAME"
-      - run: test "$VALUE" = "$REF_NAME"
-        env:
-          VALUE: ${{ fromJSON(steps.update-pr.outputs.pull_request).base.ref }}
-
-      - run: test "$(jq -r .headRefName updated.json)" = "$HEAD_REF"
-        env:
-          HEAD_REF: ${{ github.event.repository.default_branch }}
-
-      - run: test "$VALUE" = "$HEAD_REF"
-        env:
-          HEAD_REF: ${{ github.event.repository.default_branch }}
-          VALUE: ${{ fromJSON(steps.update-pr.outputs.pull_request).head.ref }}
-
-      - name: Don't update pull request
-        id: dont-update-pr
-        uses: ./.
-        with:
-          title: Test pull request ${{ steps.ref_name.outputs.ref_name }} title update ignored
-          body: Pull request body update ignored
-          base: ${{ steps.ref_name.outputs.ref_name }}
-          head: ${{ github.event.repository.default_branch }}
+          title: ${{ env.TITLE1 }}
+          body: ${{ env.BODY1 }}
           update: false
+          draft: ${{ env.PR_DRAFT }}
+          head: ${{ env.PR_HEAD_BRANCH }}
+          head_sha: ${{ case(matrix.head == 'head_sha', env.COMMIT1_SHA, '') }}
+          base: ${{ env.PR_BASE_BRANCH }}
 
-      - run: test "$PR_NUM_1" = "$PR_NUM_2"
+      - name: Get pull request using GitHub CLI
         env:
-          PR_NUM_1: ${{ steps.update-pr.outputs.number }}
-          PR_NUM_2: ${{ steps.dont-update-pr.outputs.number }}
+          PR_NUMBER: ${{ steps.pr-create.outputs.number }}
+        run: gh pr view "$PR_NUMBER" --json "$GH_PR_FIELDS" | jq -S -f test/gh-cli-filter.jq >"$RUNNER_TEMP/github-cli.json"
 
-      - run: gh pr view "$PR_NUM" --json state,isDraft,baseRefOid,baseRefName,headRefName,title,body | tee not-updated.json
+      - name: Verify action output matches GitHub CLI output
         env:
-          PR_NUM: ${{ steps.dont-update-pr.outputs.number }}
-          GH_TOKEN: ${{ github.token }}
+          ACTION_OUTPUT_JSON: ${{ steps.pr-create.outputs.pull_request }}
+        run: diff -u <(printf '%s' "$ACTION_OUTPUT_JSON" | jq -S -f test/action-output-filter.jq) "$RUNNER_TEMP/github-cli.json"
 
-      - run: diff -u updated.json not-updated.json
-
-      - run: test "$VALUE" = open
+      - name: Verify pull request matches inputs
         env:
-          VALUE: ${{ fromJSON(steps.dont-update-pr.outputs.pull_request).state }}
+          PR_NUMBER: ${{ steps.pr-create.outputs.number }}
+          PR_HTML_URL: ${{ steps.pr-create.outputs.html_url }}
+          PR_HEAD_SHA: ${{ env.COMMIT1_SHA }}
+          PR_TITLE: ${{ env.TITLE1 }}
+          PR_BODY: ${{ env.BODY1 }}
+        run: diff -u <(jq -n -S -f test/expected-filter.jq) "$RUNNER_TEMP/github-cli.json"
 
-      - run: test "$VALUE" = "true"
+      - name: 'Run action with the same inputs (except update: true)'
+        id: pr-same-input
+        uses: ./.
+        with:
+          title: ${{ env.TITLE1 }}
+          body: ${{ env.BODY1 }}
+          update: true
+          draft: ${{ env.PR_DRAFT }}
+          head: ${{ env.PR_HEAD_BRANCH }}
+          head_sha: ${{ case(matrix.head == 'head_sha', env.COMMIT1_SHA, '') }}
+          base: ${{ env.PR_BASE_BRANCH }}
+
+      - run: sleep 10
+
+      - name: Get pull request using GitHub CLI
         env:
-          VALUE: ${{ fromJSON(steps.dont-update-pr.outputs.pull_request).draft }}
+          PR_NUMBER: ${{ steps.pr-same-input.outputs.number }}
+        run: gh pr view "$PR_NUMBER" --json "$GH_PR_FIELDS" | jq -S -f test/gh-cli-filter.jq >"$RUNNER_TEMP/github-cli-2.json"
 
-      - run: test "$VALUE" = "Test pull request $REF_NAME with updated title"
+      - name: Verify there has been no changes
+        run: diff -u "$RUNNER_TEMP/github-cli.json" "$RUNNER_TEMP/github-cli-2.json"
+
+      - name: Verify action output matches GitHub CLI output
         env:
-          VALUE: ${{ fromJSON(steps.dont-update-pr.outputs.pull_request).title }}
+          ACTION_OUTPUT_JSON: ${{ steps.pr-same-input.outputs.pull_request }}
+        run: diff -u <(printf '%s' "$ACTION_OUTPUT_JSON" | jq -S -f test/action-output-filter.jq) "$RUNNER_TEMP/github-cli-2.json"
 
-      - run: test "$VALUE" = "Updated pull request body"
-        env:
-          VALUE: ${{ fromJSON(steps.dont-update-pr.outputs.pull_request).body }}
-
-      - run: test "$VALUE" = 6fe7dee2f348caea37a291f67041ab205fa98f50
-        env:
-          VALUE: ${{ fromJSON(steps.dont-update-pr.outputs.pull_request).base.sha }}
-
-      - run: test "$VALUE" = "$REF_NAME"
-        env:
-          VALUE: ${{ fromJSON(steps.dont-update-pr.outputs.pull_request).base.ref }}
-
-      - run: test "$VALUE" = "$HEAD_REF"
-        env:
-          HEAD_REF: ${{ github.event.repository.default_branch }}
-          VALUE: ${{ fromJSON(steps.dont-update-pr.outputs.pull_request).head.ref }}
-
-      - name: Delete test branch
-        if: always() && steps.create-branch.outcome == 'success'
+      - name: Add second commit
+        working-directory: testing
         run: |
-          git push origin ":refs/heads/$REF_NAME"
+          git checkout "$COMMIT_BRANCH_NAME"
+          echo Test 2 >test-file-2.txt
+          git add test-file-2.txt
+          git commit -m 'Test Commit 2'
+          git push -u origin "$COMMIT_BRANCH_NAME"
+          echo "COMMIT2_SHA=$(git rev-parse HEAD)" >>"$GITHUB_ENV"
+
+      - name: 'Run action with new inputs (but update: false)'
+        id: pr-no-update
+        uses: ./.
+        with:
+          title: ${{ env.TITLE2 }}
+          body: ${{ env.BODY2 }}
+          update: false
+          draft: ${{ env.PR_DRAFT }}
+          head: ${{ env.PR_HEAD_BRANCH }}
+          head_sha: ${{ case(matrix.head == 'head_sha', env.COMMIT2_SHA, '') }}
+          base: ${{ env.PR_BASE_BRANCH }}
+
+      - run: sleep 10
+
+      - name: Get pull request using GitHub CLI
+        env:
+          PR_NUMBER: ${{ steps.pr-no-update.outputs.number }}
+        run: gh pr view "$PR_NUMBER" --json "$GH_PR_FIELDS" | jq -S -f test/gh-cli-filter.jq >"$RUNNER_TEMP/github-cli-3.json"
+
+      - name: Verify there has been no changes
+        run: diff -u "$RUNNER_TEMP/github-cli.json" "$RUNNER_TEMP/github-cli-3.json"
+
+      - name: Verify action output matches GitHub CLI output
+        env:
+          ACTION_OUTPUT_JSON: ${{ steps.pr-no-update.outputs.pull_request }}
+        run: diff -u <(printf '%s' "$ACTION_OUTPUT_JSON" | jq -S -f test/action-output-filter.jq) "$RUNNER_TEMP/github-cli-3.json"
+
+      - name: Update PR head branch
+        if: ${{ matrix.head == 'no_head_sha' }}
+        working-directory: testing
+        run: |
+          git checkout "$PR_HEAD_BRANCH"
+          git reset --hard "$COMMIT_BRANCH_NAME"
+          git push -u origin "$PR_HEAD_BRANCH"
+
+      - run: sleep 10
+        if: ${{ matrix.head == 'no_head_sha' }}
+
+      - name: 'Run action with new inputs, update PR'
+        id: pr-update
+        uses: ./.
+        with:
+          title: ${{ env.TITLE2 }}
+          body: ${{ env.BODY2 }}
+          update: true
+          draft: ${{ env.PR_DRAFT }}
+          head: ${{ env.PR_HEAD_BRANCH }}
+          head_sha: ${{ case(matrix.head == 'head_sha', env.COMMIT2_SHA, '') }}
+          base: ${{ env.PR_BASE_BRANCH }}
+
+      - run: sleep 10
+
+      - name: Get pull request using GitHub CLI
+        env:
+          PR_NUMBER: ${{ steps.pr-update.outputs.number }}
+        run: gh pr view "$PR_NUMBER" --json "$GH_PR_FIELDS" | jq -S -f test/gh-cli-filter.jq >"$RUNNER_TEMP/github-cli-4.json"
+
+      - name: Verify action output matches GitHub CLI output
+        env:
+          ACTION_OUTPUT_JSON: ${{ steps.pr-update.outputs.pull_request }}
+        run: diff -u <(printf '%s' "$ACTION_OUTPUT_JSON" | jq -S -f test/action-output-filter.jq) "$RUNNER_TEMP/github-cli-4.json"
+
+      - name: Verify pull request matches inputs
+        env:
+          PR_NUMBER: ${{ steps.pr-update.outputs.number }}
+          PR_HTML_URL: ${{ steps.pr-update.outputs.html_url }}
+          PR_HEAD_SHA: ${{ env.COMMIT2_SHA }}
+          PR_TITLE: ${{ env.TITLE2 }}
+          PR_BODY: ${{ env.BODY2 }}
+        run: diff -u <(jq -n -S -f test/expected-filter.jq) "$RUNNER_TEMP/github-cli-4.json"
+
+      - name: Delete pr branch
+        if: ${{ always() }}
+        run: git push origin ":$PR_HEAD_BRANCH"
+        working-directory: testing
+
+      - name: Delete commit branch
+        if: ${{ always() && env.PR_HEAD_BRANCH != env.COMMIT_BRANCH_NAME }}
+        run: git push origin ":$COMMIT_BRANCH_NAME"
+        working-directory: testing
