@@ -8,8 +8,8 @@ If the pull request does not exist, it will be created.
 If it already exists, it will be updated to have the specified title and description.
 
 This action is intended to be used together with https://github.com/amezin/create-commit-action
-and https://github.com/amezin/create-or-update-git-ref-action to automatically create/update pull
-requests for modified files, but can be used standalone for other purposes too.
+to automatically create/update pull requests for modified files,
+but can be used standalone for other purposes too.
 
 ## Usage example
 
@@ -55,6 +55,12 @@ The description of the pull request.
 Source branch name, **without** `refs/heads/`.
 
 **Default**: `${{ github.ref_name }}` - the name of the branch that triggered the workflow run.
+
+### `head_sha`
+
+Source commit. If specified, source branch's head will be moved to this commit.
+
+**Default**: no default value, don't modify the `head` branch.
 
 ### `base`
 

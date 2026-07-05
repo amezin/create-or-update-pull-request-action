@@ -5,6 +5,20 @@ import * as core from '@actions/core';
 import { getOctokit } from './octokit.js';
 import pkg from '../package.json' with { type: 'json' };
 
+type UpdateOptions = {
+    title: string;
+    body: string;
+    headSha: string;
+};
+
+type CreateOptions = UpdateOptions & {
+    head: string;
+    base: string;
+    draft: boolean;
+};
+
+type CreateOrUpdateOptions = CreateOptions & { update: boolean };
+
 class Repository {
     private readonly octokit: ReturnType<typeof getOctokit>;
     private readonly owner: string;
@@ -40,14 +54,19 @@ class Repository {
         return data[0];
     }
 
-    async createPullRequest(
-        base: string,
-        head: string,
-        title: string,
-        body: string,
-        draft: boolean
-    ) {
+    async createPullRequest({
+        base,
+        head,
+        headSha,
+        title,
+        body,
+        draft,
+    }: CreateOptions) {
         const { octokit, owner, repo } = this;
+
+        if (headSha) {
+            await this.createOrUpdateRef(`heads/${head}`, headSha, true);
+        }
 
         const { data } = await octokit.rest.pulls.create({
             owner,
@@ -67,13 +86,27 @@ class Repository {
         return data;
     }
 
-    async updatePullRequest(pull_number: number, title: string, body: string) {
+    async updatePullRequest(
+        pull: NonNullable<
+            Awaited<ReturnType<Repository['findOpenPullRequest']>>
+        >,
+        options: UpdateOptions
+    ) {
         const { octokit, owner, repo } = this;
+        const { title, body, headSha } = options;
+
+        if (!pull.head.sha.startsWith(headSha)) {
+            // Note: after branch update, we always perform PR update,
+            // to get fully updated PR object (full head SHA, merge SHA, etc)
+            await this.updateRef(`heads/${pull.head.ref}`, headSha, true);
+        } else if (pull.title === title && pull.body === body) {
+            return pull;
+        }
 
         const { data } = await octokit.rest.pulls.update({
             repo,
             owner,
-            pull_number,
+            pull_number: pull.number,
             title,
             body,
         });
@@ -86,29 +119,92 @@ class Repository {
         return data;
     }
 
-    async createOrUpdatePullRequest(
-        base: string,
-        head: string,
-        title: string,
-        body: string,
-        update: boolean,
-        draft: boolean
-    ) {
+    async createOrUpdatePullRequest({
+        base,
+        head,
+        headSha,
+        title,
+        body,
+        update,
+        draft,
+    }: CreateOrUpdateOptions) {
         const existing = await this.findOpenPullRequest(base, head);
 
         if (!existing) {
-            return await this.createPullRequest(base, head, title, body, draft);
+            return await this.createPullRequest({
+                base,
+                head,
+                headSha,
+                title,
+                body,
+                draft,
+            });
         }
 
         if (!update) {
             return existing;
         }
 
-        if (existing.title === title && existing.body === body) {
-            return existing;
-        }
+        return await this.updatePullRequest(existing, {
+            title,
+            body,
+            headSha,
+        });
+    }
 
-        return await this.updatePullRequest(existing.number, title, body);
+    async listMatchingRefs(ref: string) {
+        const { octokit, owner, repo } = this;
+
+        // Note: there is no need for pagination.
+        // If there is an exact match - it will be the only returned result.
+        const { data } = await octokit.rest.git.listMatchingRefs({
+            owner,
+            repo,
+            ref,
+        });
+
+        return data;
+    }
+
+    async getRef(ref: string) {
+        const matching = await this.listMatchingRefs(ref);
+
+        return matching.filter(result => result.ref === `refs/${ref}`)[0];
+    }
+
+    async createRef(ref: string, sha: string) {
+        const { octokit, owner, repo } = this;
+
+        await octokit.rest.git.createRef({
+            owner,
+            repo,
+            ref: `refs/${ref}`,
+            sha,
+        });
+    }
+
+    async updateRef(ref: string, sha: string, force: boolean) {
+        const { octokit, owner, repo } = this;
+
+        await octokit.rest.git.updateRef({
+            owner,
+            repo,
+            ref,
+            sha,
+            force,
+        });
+    }
+
+    async createOrUpdateRef(ref: string, sha: string, force: boolean) {
+        const existing = await this.getRef(ref);
+
+        if (existing) {
+            if (!existing.object.sha.startsWith(sha)) {
+                await this.updateRef(ref, sha, force);
+            }
+        } else {
+            await this.createRef(ref, sha);
+        }
     }
 }
 
@@ -117,6 +213,7 @@ async function run() {
     const repository = core.getInput('repository', { required: true });
     const base = core.getInput('base', { required: true });
     const head = core.getInput('head', { required: true });
+    const headSha = core.getInput('head_sha', { required: false });
     const title = core.getInput('title', { required: true });
     const body = core.getInput('body', { required: true });
     const update = core.getBooleanInput('update', { required: true });
@@ -128,14 +225,15 @@ async function run() {
 
     const repo = new Repository(github, repository);
 
-    const pr = await repo.createOrUpdatePullRequest(
+    const pr = await repo.createOrUpdatePullRequest({
         base,
         head,
+        headSha,
         title,
         body,
         update,
-        draft
-    );
+        draft,
+    });
 
     core.setOutput('number', pr.number);
     core.setOutput('url', pr.url);

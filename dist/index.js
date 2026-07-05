@@ -38395,8 +38395,11 @@ class Repository {
         });
         return data[0];
     }
-    async createPullRequest(base, head, title, body, draft) {
+    async createPullRequest({ base, head, headSha, title, body, draft, }) {
         const { octokit, owner, repo } = this;
+        if (headSha) {
+            await this.createOrUpdateRef(`heads/${head}`, headSha, true);
+        }
         const { data } = await octokit.rest.pulls.create({
             owner,
             repo,
@@ -38411,12 +38414,21 @@ class Repository {
         `Created pull request #${data.number}: ${data.html_url}`);
         return data;
     }
-    async updatePullRequest(pull_number, title, body) {
+    async updatePullRequest(pull, options) {
         const { octokit, owner, repo } = this;
+        const { title, body, headSha } = options;
+        if (!pull.head.sha.startsWith(headSha)) {
+            // Note: after branch update, we always perform PR update,
+            // to get fully updated PR object (full head SHA, merge SHA, etc)
+            await this.updateRef(`heads/${pull.head.ref}`, headSha, true);
+        }
+        else if (pull.title === title && pull.body === body) {
+            return pull;
+        }
         const { data } = await octokit.rest.pulls.update({
             repo,
             owner,
-            pull_number,
+            pull_number: pull.number,
             title,
             body,
         });
@@ -38425,18 +38437,71 @@ class Repository {
         `Updated pull request #${data.number}: ${data.html_url}`);
         return data;
     }
-    async createOrUpdatePullRequest(base, head, title, body, update, draft) {
+    async createOrUpdatePullRequest({ base, head, headSha, title, body, update, draft, }) {
         const existing = await this.findOpenPullRequest(base, head);
         if (!existing) {
-            return await this.createPullRequest(base, head, title, body, draft);
+            return await this.createPullRequest({
+                base,
+                head,
+                headSha,
+                title,
+                body,
+                draft,
+            });
         }
         if (!update) {
             return existing;
         }
-        if (existing.title === title && existing.body === body) {
-            return existing;
+        return await this.updatePullRequest(existing, {
+            title,
+            body,
+            headSha,
+        });
+    }
+    async listMatchingRefs(ref) {
+        const { octokit, owner, repo } = this;
+        // Note: there is no need for pagination.
+        // If there is an exact match - it will be the only returned result.
+        const { data } = await octokit.rest.git.listMatchingRefs({
+            owner,
+            repo,
+            ref,
+        });
+        return data;
+    }
+    async getRef(ref) {
+        const matching = await this.listMatchingRefs(ref);
+        return matching.filter(result => result.ref === `refs/${ref}`)[0];
+    }
+    async createRef(ref, sha) {
+        const { octokit, owner, repo } = this;
+        await octokit.rest.git.createRef({
+            owner,
+            repo,
+            ref: `refs/${ref}`,
+            sha,
+        });
+    }
+    async updateRef(ref, sha, force) {
+        const { octokit, owner, repo } = this;
+        await octokit.rest.git.updateRef({
+            owner,
+            repo,
+            ref,
+            sha,
+            force,
+        });
+    }
+    async createOrUpdateRef(ref, sha, force) {
+        const existing = await this.getRef(ref);
+        if (existing) {
+            if (!existing.object.sha.startsWith(sha)) {
+                await this.updateRef(ref, sha, force);
+            }
         }
-        return await this.updatePullRequest(existing.number, title, body);
+        else {
+            await this.createRef(ref, sha);
+        }
     }
 }
 async function run() {
@@ -38444,6 +38509,7 @@ async function run() {
     const repository = getInput('repository', { required: true });
     const base = getInput('base', { required: true });
     const head = getInput('head', { required: true });
+    const headSha = getInput('head_sha', { required: false });
     const title = getInput('title', { required: true });
     const body = getInput('body', { required: true });
     const update = getBooleanInput('update', { required: true });
@@ -38452,7 +38518,15 @@ async function run() {
         userAgent: `${package_namespaceObject.UU}/v${package_namespaceObject.rE}`,
     });
     const repo = new Repository(github, repository);
-    const pr = await repo.createOrUpdatePullRequest(base, head, title, body, update, draft);
+    const pr = await repo.createOrUpdatePullRequest({
+        base,
+        head,
+        headSha,
+        title,
+        body,
+        update,
+        draft,
+    });
     setOutput('number', pr.number);
     setOutput('url', pr.url);
     setOutput('html_url', pr.html_url);
