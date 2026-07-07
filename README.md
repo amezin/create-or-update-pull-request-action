@@ -74,6 +74,26 @@ Target branch name, **without** `refs/heads/`.
 
 **Default**: `${{ github.event.repository.default_branch }}` - the default branch of the repository.
 
+### `poll-interval`
+
+When updating the branch through `head_sha` input, the action will wait for the pull request to update,
+by repeatedly getting pull request information through the API.
+
+This is the interval between attempts, in seconds.
+
+**Default**: `1`
+
+### `poll-repeats`
+
+When updating the branch through `head_sha` input, the action will wait for the pull request to update,
+by repeatedly getting pull request information through the API.
+
+This is the number of such repeated attempts.
+
+If the pull request does not update by the time these attempts were exhausted, the action will fail.
+
+**Default**: `10`
+
 ### `github-token`
 
 GitHub API token to use.

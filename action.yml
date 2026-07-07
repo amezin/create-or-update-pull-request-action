@@ -49,6 +49,18 @@ inputs:
     default: ${{ github.event.repository.default_branch }}
     required: true
 
+  poll-interval:
+    description: Polling interval when waiting for PR head to update, in seconds.
+    default: '1'
+    required: true
+
+  poll-repeats:
+    default: '10'
+    required: true
+    description: >-
+      Number of repeated requests when waiting for PR head to update.
+      Total wait time will be poll-interval * poll-repeats.
+
   github-token:
     description: GitHub API token to use
     default: ${{ github.token }}

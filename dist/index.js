@@ -38373,8 +38373,6 @@ const package_namespaceObject = /*#__PURE__*/JSON.parse('{"UU":"@amezin/create-o
 
 
 
-const POLL_INTERVAL_MS = 1000;
-const POLL_REPEATS = 10;
 class Repository {
     octokit;
     owner;
@@ -38431,7 +38429,7 @@ class Repository {
     }
     async updatePullRequest(pull, options) {
         const { octokit, owner, repo } = this;
-        const { title, body, headSha, force } = options;
+        const { title, body, headSha, force, pollInterval, pollRepeats } = options;
         let updated = pull;
         // Head should be updated first, may fail when force=false
         // Not covered by tests yet
@@ -38448,8 +38446,8 @@ class Repository {
             });
             updated = data;
         }
-        for (let i = 0; i < POLL_REPEATS && !updated.head.sha.startsWith(headSha); i++) {
-            await (0,promises_namespaceObject.setTimeout)(POLL_INTERVAL_MS);
+        for (let i = 0; i < pollRepeats && !updated.head.sha.startsWith(headSha); i++) {
+            await (0,promises_namespaceObject.setTimeout)(pollInterval);
             updated = await this.getPullRequest(pull.number);
         }
         if (!updated.head.sha.startsWith(headSha)) {
@@ -38460,7 +38458,7 @@ class Repository {
         `Updated pull request #${updated.number}: ${updated.html_url}`);
         return updated;
     }
-    async createOrUpdatePullRequest({ base, head, headSha, title, body, update, draft, force, }) {
+    async createOrUpdatePullRequest({ base, head, headSha, title, body, update, draft, force, pollInterval, pollRepeats, }) {
         const existing = await this.findOpenPullRequest(base, head);
         if (!existing) {
             return await this.createPullRequest({
@@ -38480,6 +38478,8 @@ class Repository {
             body,
             headSha,
             force,
+            pollInterval,
+            pollRepeats,
         });
     }
     async listMatchingRefs(ref) {
@@ -38539,6 +38539,8 @@ async function run() {
     const update = getBooleanInput('update', { required: true });
     const draft = getBooleanInput('draft', { required: true });
     const force = getBooleanInput('force', { required: true });
+    const pollInterval = Number.parseFloat(getInput('poll-interval', { required: true }));
+    const pollRepeats = Number.parseInt(getInput('poll-repeats', { required: true }), 10);
     const github = octokit_getOctokit(token, {
         userAgent: `${package_namespaceObject.UU}/v${package_namespaceObject.rE}`,
     });
@@ -38552,6 +38554,8 @@ async function run() {
         update,
         draft,
         force,
+        pollInterval,
+        pollRepeats,
     });
     setOutput('number', pr.number);
     setOutput('url', pr.url);

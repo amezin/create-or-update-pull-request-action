@@ -6,9 +6,6 @@ import * as core from '@actions/core';
 import { getOctokit } from './octokit.js';
 import pkg from '../package.json' with { type: 'json' };
 
-const POLL_INTERVAL_MS = 1000;
-const POLL_REPEATS = 10;
-
 type CommonOptions = {
     title: string;
     body: string;
@@ -23,6 +20,8 @@ type CreateOptions = CommonOptions & {
 
 type UpdateOptions = CommonOptions & {
     force: boolean;
+    pollInterval: number;
+    pollRepeats: number;
 };
 
 type CreateOrUpdateOptions = CreateOptions &
@@ -115,7 +114,9 @@ class Repository {
         options: UpdateOptions
     ) {
         const { octokit, owner, repo } = this;
-        const { title, body, headSha, force } = options;
+        const { title, body, headSha, force, pollInterval, pollRepeats } =
+            options;
+
         let updated = pull;
 
         // Head should be updated first, may fail when force=false
@@ -138,10 +139,10 @@ class Repository {
 
         for (
             let i = 0;
-            i < POLL_REPEATS && !updated.head.sha.startsWith(headSha);
+            i < pollRepeats && !updated.head.sha.startsWith(headSha);
             i++
         ) {
-            await setTimeout(POLL_INTERVAL_MS);
+            await setTimeout(pollInterval);
 
             updated = await this.getPullRequest(pull.number);
         }
@@ -169,6 +170,8 @@ class Repository {
         update,
         draft,
         force,
+        pollInterval,
+        pollRepeats,
     }: CreateOrUpdateOptions) {
         const existing = await this.findOpenPullRequest(base, head);
 
@@ -192,6 +195,8 @@ class Repository {
             body,
             headSha,
             force,
+            pollInterval,
+            pollRepeats,
         });
     }
 
@@ -263,6 +268,15 @@ async function run() {
     const draft = core.getBooleanInput('draft', { required: true });
     const force = core.getBooleanInput('force', { required: true });
 
+    const pollInterval = Number.parseFloat(
+        core.getInput('poll-interval', { required: true })
+    );
+
+    const pollRepeats = Number.parseInt(
+        core.getInput('poll-repeats', { required: true }),
+        10
+    );
+
     const github = getOctokit(token, {
         userAgent: `${pkg.name}/v${pkg.version}`,
     });
@@ -278,6 +292,8 @@ async function run() {
         update,
         draft,
         force,
+        pollInterval,
+        pollRepeats,
     });
 
     core.setOutput('number', pr.number);
