@@ -124,8 +124,10 @@ jobs:
         include:
           - head: head_sha
             draft: no_draft
+            force: no_force
           - head: no_head_sha
             draft: draft
+            force: force
 
     env:
       GH_TOKEN: ${{ github.token }}
@@ -186,6 +188,7 @@ jobs:
           title: ${{ env.TITLE1 }}
           body: ${{ env.BODY1 }}
           update: false
+          force: false
           draft: ${{ env.PR_DRAFT }}
           head: ${{ env.PR_HEAD_BRANCH }}
           head_sha: ${{ case(matrix.head == 'head_sha', env.COMMIT1_SHA, '') }}
@@ -217,6 +220,7 @@ jobs:
           title: ${{ env.TITLE1 }}
           body: ${{ env.BODY1 }}
           update: true
+          force: false
           draft: ${{ env.PR_DRAFT }}
           head: ${{ env.PR_HEAD_BRANCH }}
           head_sha: ${{ case(matrix.head == 'head_sha', env.COMMIT1_SHA, '') }}
@@ -254,6 +258,7 @@ jobs:
           title: ${{ env.TITLE2 }}
           body: ${{ env.BODY2 }}
           update: false
+          force: false
           draft: ${{ env.PR_DRAFT }}
           head: ${{ env.PR_HEAD_BRANCH }}
           head_sha: ${{ case(matrix.head == 'head_sha', env.COMMIT2_SHA, '') }}
@@ -292,6 +297,7 @@ jobs:
           title: ${{ env.TITLE2 }}
           body: ${{ env.BODY2 }}
           update: true
+          force: false
           draft: ${{ env.PR_DRAFT }}
           head: ${{ env.PR_HEAD_BRANCH }}
           head_sha: ${{ case(matrix.head == 'head_sha', env.COMMIT2_SHA, '') }}
@@ -317,6 +323,42 @@ jobs:
           PR_TITLE: ${{ env.TITLE2 }}
           PR_BODY: ${{ env.BODY2 }}
         run: diff -u <(jq -n -S -f test/expected-filter.jq) "$RUNNER_TEMP/github-cli-4.json"
+
+      - name: 'Try to roll back PR (always using head_sha)'
+        id: pr-rollback
+        continue-on-error: true
+        uses: ./.
+        with:
+          title: ${{ env.TITLE1 }}
+          body: ${{ env.BODY1 }}
+          update: true
+          force: ${{ matrix.force == 'force' }}
+          draft: ${{ env.PR_DRAFT }}
+          head: ${{ env.PR_HEAD_BRANCH }}
+          head_sha: ${{ env.COMMIT1_SHA }}
+          base: ${{ env.PR_BASE_BRANCH }}
+
+      - run: sleep 10
+
+      - name: Get pull request using GitHub CLI
+        env:
+          PR_NUMBER: ${{ steps.pr-create.outputs.number }}
+        run: gh pr view "$PR_NUMBER" --json "$GH_PR_FIELDS" | jq -S -f test/gh-cli-filter.jq >"$RUNNER_TEMP/github-cli-5.json"
+
+      - name: Verify action output matches GitHub CLI output
+        if: ${{ matrix.force == 'force' }}
+        env:
+          ACTION_OUTPUT_JSON: ${{ steps.pr-rollback.outputs.pull_request }}
+        run: diff -u <(printf '%s' "$ACTION_OUTPUT_JSON" | jq -S -f test/action-output-filter.jq) "$RUNNER_TEMP/github-cli-5.json"
+
+      - name: Verify pull request matches inputs
+        env:
+          PR_NUMBER: ${{ case(matrix.force == 'force', steps.pr-rollback.outputs.number, steps.pr-create.outputs.number) }}
+          PR_HTML_URL: ${{ case(matrix.force == 'force', steps.pr-rollback.outputs.html_url, steps.pr-create.outputs.html_url) }}
+          PR_HEAD_SHA: ${{ case(matrix.force == 'force', env.COMMIT1_SHA, env.COMMIT2_SHA) }}
+          PR_TITLE: ${{ case(matrix.force == 'force', env.TITLE1, env.TITLE2) }}
+          PR_BODY: ${{ case(matrix.force == 'force', env.BODY1, env.BODY2) }}
+        run: diff -u <(jq -n -S -f test/expected-filter.jq) "$RUNNER_TEMP/github-cli-5.json"
 
       - name: Delete pr branch
         if: ${{ always() }}
