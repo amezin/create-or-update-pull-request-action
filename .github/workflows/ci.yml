@@ -104,15 +104,126 @@ jobs:
 
       - run: actionlint -verbose -color
 
-  test:
+  test-setup:
+    needs: dist-check
+
     if: >-
-      github.event.pull_request.head.repo.node_id == github.event.pull_request.base.repo.node_id
-      || !github.event.pull_request
+      ${{
+        !github.event.pull_request ||
+        github.event.pull_request.head.repo.node_id == github.event.pull_request.base.repo.node_id
+      }}
 
+    runs-on: ubuntu-slim
+
+    permissions:
+      contents: write
+
+    outputs:
+      commit-branch: ${{ steps.branch-names.outputs.commits }}
+      base-branch: ${{ steps.branch-names.outputs.base }}
+      commits: >-
+        ${{
+          format(
+            '["{0}", "{1}", "{2}"]',
+            steps.commit0.outputs.sha,
+            steps.commit1.outputs.sha,
+            steps.commit2.outputs.sha
+          )
+        }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: true
+
+      - name: Configure Git
+        run: |
+          git config --global user.name 'Test'
+          git config --global user.email 'test@example.com'
+
+      - name: Generate branch names
+        id: branch-names
+        run: |
+          echo "commits=testing-commit-$GITHUB_RUN_ID" | tee -a "$GITHUB_OUTPUT"
+          echo "base=testing-base-$GITHUB_RUN_ID" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Start orphan branch
+        run: |
+          git checkout --orphan "$COMMIT_BRANCH"
+          git rm -rf .
+        env:
+          COMMIT_BRANCH: ${{ steps.branch-names.outputs.commits }}
+
+      - name: Initial commit
+        id: commit0
+        run: |
+          git commit --allow-empty -m 'Initial empty commit'
+          echo "sha=$(git rev-parse HEAD)" | tee -a "GITHUB_OUTPUT"
+
+      - name: Start base branch
+        run: |
+          git checkout -b "$BASE_BRANCH"
+          git push -u origin "$BASE_BRANCH"
+          git checkout "$COMMIT_BRANCH"
+        env:
+          BASE_BRANCH: ${{ steps.branch-names.outputs.base }}
+          COMMIT_BRANCH: ${{ steps.branch-names.outputs.commits }}
+
+      - name: Commit 1
+        id: commit1
+        run: |
+          echo Test commit 1 >test-file.txt
+          git add test-file.txt
+          git commit -m 'Test Commit 1'
+          echo "sha=$(git rev-parse HEAD)" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Commit 2
+        id: commit2
+        run: |
+          echo Test commit 2 >test-file.txt
+          git add test-file.txt
+          git commit -m 'Test Commit 2'
+          echo "sha=$(git rev-parse HEAD)" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Push commits
+        run: git push -u origin "$COMMIT_BRANCH"
+        env:
+          COMMIT_BRANCH: ${{ steps.branch-names.outputs.commits }}
+
+  test-teardown:
     needs:
-      - dist-check
+      - test-setup
+      - test
 
-    runs-on: ubuntu-latest
+    if: ${{ always() && needs.test-setup.result != 'skipped' }}
+    runs-on: ubuntu-slim
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: true
+
+      - name: Delete commit branch
+        run: git push origin ":$BRANCH"
+        continue-on-error: true
+        env:
+          BRANCH: ${{ needs.test-setup.outputs.commit-branch }}
+
+      - name: Delete base branch
+        run: git push origin ":$BRANCH"
+        continue-on-error: true
+        env:
+          BRANCH: ${{ needs.test-setup.outputs.base-branch }}
+
+  test:
+    needs: test-setup
+
+    runs-on: ubuntu-slim
 
     permissions:
       contents: write
@@ -122,28 +233,62 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - head: head_sha
-            draft: no_draft
-            force: no_force
-          - head: no_head_sha
-            draft: draft
+          - draft: no-draft
+            force: no-force
+            update: update
+            use-head-sha: no-use-head-sha
+            success: success
+            commit1: 1
+            commit2: 2
+
+          - draft: draft
+            force: no-force
+            update: update
+            use-head-sha: use-head-sha
+            success: success
+            commit1: 1
+            commit2: 2
+
+          - draft: no-draft
+            force: no-force
+            update: update
+            use-head-sha: use-head-sha
+            success: no-success
+            commit1: 2
+            commit2: 1
+
+          - draft: no-draft
             force: force
+            update: update
+            use-head-sha: use-head-sha
+            success: success
+            commit1: 2
+            commit2: 1
+
+          - draft: no-draft
+            force: no-force
+            update: no-update
+            use-head-sha: use-head-sha
+            success: success
+            commit1: 2
+            commit2: 1
 
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       GH_PR_FIELDS: number,title,body,isDraft,state,headRefName,headRefOid,baseRefName,url
 
-      COMMIT_BRANCH_NAME: testing-commit-${{ github.run_id }}-${{ strategy.job-index }}
       PR_HEAD_BRANCH: testing-pr-${{ github.run_id }}-${{ strategy.job-index }}
-      PR_BASE_BRANCH: main
-      PR_DRAFT: ${{ matrix.draft == 'draft' }}
+      PR_BASE_BRANCH: ${{ needs.test-setup.outputs.base-branch }}
 
-      TITLE1: Test pull request ${{ matrix.draft }} ${{ matrix.head }} title
-      BODY1: Test pull request ${{ matrix.draft }} ${{ matrix.head }} body
+      TITLE1: Test pull request ${{ github.run_id }} ${{ strategy.job-index }} title
+      BODY1: Test pull request ${{ github.run_id }} ${{ strategy.job-index }} body
 
-      TITLE2: Test pull request ${{ matrix.draft }} ${{ matrix.head }} title 2
-      BODY2: Test pull request ${{ matrix.draft }} ${{ matrix.head }} body 2
+      TITLE2: Test pull request ${{ github.run_id }} ${{ strategy.job-index }} title 2
+      BODY2: Test pull request ${{ github.run_id }} ${{ strategy.job-index }} body 2
+
+      COMMIT1: ${{ fromJSON(needs.test-setup.outputs.commits)[matrix.commit1] }}
+      COMMIT2: ${{ fromJSON(needs.test-setup.outputs.commits)[matrix.commit2] }}
 
     steps:
       - name: 'Checkout: action source'
@@ -154,31 +299,16 @@ jobs:
       - name: 'Checkout: working directory for tests'
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          ref: ${{ env.PR_BASE_BRANCH }}
+          ref: ${{ needs.test-setup.outputs.base-branch }}
           path: testing
           persist-credentials: true
 
-      - name: Configure Git
-        run: |
-          git config --global user.name 'Test'
-          git config --global user.email 'test@example.com'
-
-      - name: Add a test commit
-        working-directory: testing
-        run: |
-          echo "BASE_SHA=$(git rev-parse HEAD)" >>"$GITHUB_ENV"
-          git checkout -b "$COMMIT_BRANCH_NAME"
-          echo Test >test-file-1.txt
-          git add test-file-1.txt
-          git commit -m 'Test Commit 1'
-          git push -u origin "$COMMIT_BRANCH_NAME"
-          echo "COMMIT1_SHA=$(git rev-parse HEAD)" >>"$GITHUB_ENV"
-
       - name: Create PR head branch
-        if: ${{ matrix.head == 'no_head_sha' }}
+        if: ${{ matrix.use-head-sha != 'use-head-sha' }}
         working-directory: testing
         run: |
-          git checkout -b "$PR_HEAD_BRANCH"
+          git fetch origin "$COMMIT1"
+          git checkout -b "$PR_HEAD_BRANCH" "$COMMIT1"
           git push -u origin "$PR_HEAD_BRANCH"
 
       - name: Create pull request
@@ -187,11 +317,11 @@ jobs:
         with:
           title: ${{ env.TITLE1 }}
           body: ${{ env.BODY1 }}
-          update: false
-          force: false
-          draft: ${{ env.PR_DRAFT }}
+          update: ${{ matrix.update == 'update' }}
+          force: ${{ matrix.force == 'force' }}
+          draft: ${{ matrix.draft == 'draft' }}
+          head_sha: ${{ case(matrix.use-head-sha == 'use-head-sha', env.COMMIT1, '') }}
           head: ${{ env.PR_HEAD_BRANCH }}
-          head_sha: ${{ case(matrix.head == 'head_sha', env.COMMIT1_SHA, '') }}
           base: ${{ env.PR_BASE_BRANCH }}
 
       - name: Get pull request using GitHub CLI
@@ -208,164 +338,62 @@ jobs:
         env:
           PR_NUMBER: ${{ steps.pr-create.outputs.number }}
           PR_HTML_URL: ${{ steps.pr-create.outputs.html_url }}
-          PR_HEAD_SHA: ${{ env.COMMIT1_SHA }}
+          PR_HEAD_SHA: ${{ env.COMMIT1 }}
           PR_TITLE: ${{ env.TITLE1 }}
           PR_BODY: ${{ env.BODY1 }}
+          PR_DRAFT: ${{ matrix.draft == 'draft' }}
         run: diff -u <(jq -n -S -f test/expected-filter.jq) "$RUNNER_TEMP/github-cli.json"
 
-      - name: 'Run action with the same inputs (except update: true)'
-        id: pr-same-input
-        uses: ./.
-        with:
-          title: ${{ env.TITLE1 }}
-          body: ${{ env.BODY1 }}
-          update: true
-          force: false
-          draft: ${{ env.PR_DRAFT }}
-          head: ${{ env.PR_HEAD_BRANCH }}
-          head_sha: ${{ case(matrix.head == 'head_sha', env.COMMIT1_SHA, '') }}
-          base: ${{ env.PR_BASE_BRANCH }}
-
-      - run: sleep 10
-
-      - name: Get pull request using GitHub CLI
-        env:
-          PR_NUMBER: ${{ steps.pr-same-input.outputs.number }}
-        run: gh pr view "$PR_NUMBER" --json "$GH_PR_FIELDS" | jq -S -f test/gh-cli-filter.jq >"$RUNNER_TEMP/github-cli-2.json"
-
-      - name: Verify there has been no changes
-        run: diff -u "$RUNNER_TEMP/github-cli.json" "$RUNNER_TEMP/github-cli-2.json"
-
-      - name: Verify action output matches GitHub CLI output
-        env:
-          ACTION_OUTPUT_JSON: ${{ steps.pr-same-input.outputs.pull_request }}
-        run: diff -u <(printf '%s' "$ACTION_OUTPUT_JSON" | jq -S -f test/action-output-filter.jq) "$RUNNER_TEMP/github-cli-2.json"
-
-      - name: Add second commit
-        working-directory: testing
-        run: |
-          git checkout "$COMMIT_BRANCH_NAME"
-          echo Test 2 >test-file-2.txt
-          git add test-file-2.txt
-          git commit -m 'Test Commit 2'
-          git push -u origin "$COMMIT_BRANCH_NAME"
-          echo "COMMIT2_SHA=$(git rev-parse HEAD)" >>"$GITHUB_ENV"
-
-      - name: 'Run action with new inputs (but update: false)'
-        id: pr-no-update
-        uses: ./.
-        with:
-          title: ${{ env.TITLE2 }}
-          body: ${{ env.BODY2 }}
-          update: false
-          force: false
-          draft: ${{ env.PR_DRAFT }}
-          head: ${{ env.PR_HEAD_BRANCH }}
-          head_sha: ${{ case(matrix.head == 'head_sha', env.COMMIT2_SHA, '') }}
-          base: ${{ env.PR_BASE_BRANCH }}
-
-      - run: sleep 10
-
-      - name: Get pull request using GitHub CLI
-        env:
-          PR_NUMBER: ${{ steps.pr-no-update.outputs.number }}
-        run: gh pr view "$PR_NUMBER" --json "$GH_PR_FIELDS" | jq -S -f test/gh-cli-filter.jq >"$RUNNER_TEMP/github-cli-3.json"
-
-      - name: Verify there has been no changes
-        run: diff -u "$RUNNER_TEMP/github-cli.json" "$RUNNER_TEMP/github-cli-3.json"
-
-      - name: Verify action output matches GitHub CLI output
-        env:
-          ACTION_OUTPUT_JSON: ${{ steps.pr-no-update.outputs.pull_request }}
-        run: diff -u <(printf '%s' "$ACTION_OUTPUT_JSON" | jq -S -f test/action-output-filter.jq) "$RUNNER_TEMP/github-cli-3.json"
-
       - name: Update PR head branch
-        if: ${{ matrix.head == 'no_head_sha' }}
+        if: ${{ matrix.use-head-sha != 'use-head-sha' }}
         working-directory: testing
         run: |
           git checkout "$PR_HEAD_BRANCH"
-          git reset --hard "$COMMIT_BRANCH_NAME"
-          git push -u origin "$PR_HEAD_BRANCH"
+          git fetch origin "$COMMIT2"
+          git reset --hard "$COMMIT2"
+          git push --force -u origin "$PR_HEAD_BRANCH"
 
       - run: sleep 10
-        if: ${{ matrix.head == 'no_head_sha' }}
+        if: ${{ matrix.use-head-sha != 'use-head-sha' }}
 
       - name: 'Run action with new inputs, update PR'
         id: pr-update
+        continue-on-error: ${{ matrix.success != 'success' }}
         uses: ./.
         with:
           title: ${{ env.TITLE2 }}
           body: ${{ env.BODY2 }}
-          update: true
-          force: false
-          draft: ${{ env.PR_DRAFT }}
+          update: ${{ matrix.update == 'update' }}
+          force: ${{ matrix.force == 'force' }}
+          draft: ${{ matrix.draft == 'draft' }}
+          head_sha: ${{ env.COMMIT2 }}
           head: ${{ env.PR_HEAD_BRANCH }}
-          head_sha: ${{ case(matrix.head == 'head_sha', env.COMMIT2_SHA, '') }}
           base: ${{ env.PR_BASE_BRANCH }}
 
       - run: sleep 10
 
       - name: Get pull request using GitHub CLI
         env:
-          PR_NUMBER: ${{ steps.pr-update.outputs.number }}
-        run: gh pr view "$PR_NUMBER" --json "$GH_PR_FIELDS" | jq -S -f test/gh-cli-filter.jq >"$RUNNER_TEMP/github-cli-4.json"
+          PR_NUMBER: ${{ case(matrix.success == 'success', steps.pr-update.outputs.number, steps.pr-create.outputs.number) }}
+        run: gh pr view "$PR_NUMBER" --json "$GH_PR_FIELDS" | jq -S -f test/gh-cli-filter.jq >"$RUNNER_TEMP/github-cli-2.json"
 
       - name: Verify action output matches GitHub CLI output
+        if: ${{ matrix.success == 'success' }}
         env:
           ACTION_OUTPUT_JSON: ${{ steps.pr-update.outputs.pull_request }}
-        run: diff -u <(printf '%s' "$ACTION_OUTPUT_JSON" | jq -S -f test/action-output-filter.jq) "$RUNNER_TEMP/github-cli-4.json"
+        run: diff -u <(printf '%s' "$ACTION_OUTPUT_JSON" | jq -S -f test/action-output-filter.jq) "$RUNNER_TEMP/github-cli-2.json"
 
       - name: Verify pull request matches inputs
         env:
-          PR_NUMBER: ${{ steps.pr-update.outputs.number }}
-          PR_HTML_URL: ${{ steps.pr-update.outputs.html_url }}
-          PR_HEAD_SHA: ${{ env.COMMIT2_SHA }}
-          PR_TITLE: ${{ env.TITLE2 }}
-          PR_BODY: ${{ env.BODY2 }}
-        run: diff -u <(jq -n -S -f test/expected-filter.jq) "$RUNNER_TEMP/github-cli-4.json"
-
-      - name: 'Try to roll back PR (always using head_sha)'
-        id: pr-rollback
-        continue-on-error: true
-        uses: ./.
-        with:
-          title: ${{ env.TITLE1 }}
-          body: ${{ env.BODY1 }}
-          update: true
-          force: ${{ matrix.force == 'force' }}
-          draft: ${{ env.PR_DRAFT }}
-          head: ${{ env.PR_HEAD_BRANCH }}
-          head_sha: ${{ env.COMMIT1_SHA }}
-          base: ${{ env.PR_BASE_BRANCH }}
-
-      - run: sleep 10
-
-      - name: Get pull request using GitHub CLI
-        env:
-          PR_NUMBER: ${{ steps.pr-create.outputs.number }}
-        run: gh pr view "$PR_NUMBER" --json "$GH_PR_FIELDS" | jq -S -f test/gh-cli-filter.jq >"$RUNNER_TEMP/github-cli-5.json"
-
-      - name: Verify action output matches GitHub CLI output
-        if: ${{ matrix.force == 'force' }}
-        env:
-          ACTION_OUTPUT_JSON: ${{ steps.pr-rollback.outputs.pull_request }}
-        run: diff -u <(printf '%s' "$ACTION_OUTPUT_JSON" | jq -S -f test/action-output-filter.jq) "$RUNNER_TEMP/github-cli-5.json"
-
-      - name: Verify pull request matches inputs
-        env:
-          PR_NUMBER: ${{ case(matrix.force == 'force', steps.pr-rollback.outputs.number, steps.pr-create.outputs.number) }}
-          PR_HTML_URL: ${{ case(matrix.force == 'force', steps.pr-rollback.outputs.html_url, steps.pr-create.outputs.html_url) }}
-          PR_HEAD_SHA: ${{ case(matrix.force == 'force', env.COMMIT1_SHA, env.COMMIT2_SHA) }}
-          PR_TITLE: ${{ case(matrix.force == 'force', env.TITLE1, env.TITLE2) }}
-          PR_BODY: ${{ case(matrix.force == 'force', env.BODY1, env.BODY2) }}
-        run: diff -u <(jq -n -S -f test/expected-filter.jq) "$RUNNER_TEMP/github-cli-5.json"
+          PR_NUMBER: ${{ case(matrix.success == 'success', steps.pr-update.outputs.number, steps.pr-create.outputs.number) }}
+          PR_HTML_URL: ${{ case(matrix.success == 'success', steps.pr-update.outputs.html_url, steps.pr-create.outputs.html_url) }}
+          PR_HEAD_SHA: ${{ case(matrix.success == 'success' && matrix.update == 'update', env.COMMIT2, env.COMMIT1) }}
+          PR_TITLE: ${{ case(matrix.success == 'success' && matrix.update == 'update', env.TITLE2, env.TITLE1) }}
+          PR_BODY: ${{ case(matrix.success == 'success' && matrix.update == 'update', env.BODY2, env.BODY1) }}
+          PR_DRAFT: ${{ matrix.draft == 'draft' }}
+        run: diff -u <(jq -n -S -f test/expected-filter.jq) "$RUNNER_TEMP/github-cli-2.json"
 
       - name: Delete pr branch
         if: ${{ always() }}
         run: git push origin ":$PR_HEAD_BRANCH"
-        working-directory: testing
-
-      - name: Delete commit branch
-        if: ${{ always() && env.PR_HEAD_BRANCH != env.COMMIT_BRANCH_NAME }}
-        run: git push origin ":$COMMIT_BRANCH_NAME"
         working-directory: testing
