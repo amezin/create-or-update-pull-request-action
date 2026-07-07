@@ -38432,22 +38432,11 @@ class Repository {
     async updatePullRequest(pull, options) {
         const { octokit, owner, repo } = this;
         const { title, body, headSha } = options;
-        let updated = pull;
-        if (pull.title !== title || pull.body !== body) {
-            const { data } = await octokit.rest.pulls.update({
-                repo,
-                owner,
-                pull_number: pull.number,
-                title,
-                body,
-            });
-            updated = data;
-        }
         if (!pull.head.sha.startsWith(headSha)) {
             // Note: after branch update, we always perform PR update,
             // to get fully updated PR object (full head SHA, merge SHA, etc)
             await this.updateRef(`heads/${pull.head.ref}`, headSha, true);
-            updated = await this.getPullRequest(pull.number);
+            let updated = await this.getPullRequest(pull.number);
             for (let i = 0; i < POLL_REPEATS && pull.head.sha === updated.head.sha; i++) {
                 await (0,promises_namespaceObject.setTimeout)(POLL_INTERVAL_MS);
                 updated = await this.getPullRequest(pull.number);
@@ -38455,11 +38444,22 @@ class Repository {
             if (pull.head.sha === updated.head.sha) {
                 throw new Error('Failed to update pull request head');
             }
+            pull = updated;
         }
+        if (pull.title === title && pull.body === body) {
+            return pull;
+        }
+        const { data } = await octokit.rest.pulls.update({
+            repo,
+            owner,
+            pull_number: pull.number,
+            title,
+            body,
+        });
         octokit.log.info(
         // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
-        `Updated pull request #${updated.number}: ${updated.html_url}`);
-        return updated;
+        `Updated pull request #${data.number}: ${data.html_url}`);
+        return data;
     }
     async createOrUpdatePullRequest({ base, head, headSha, title, body, update, draft, }) {
         const existing = await this.findOpenPullRequest(base, head);
