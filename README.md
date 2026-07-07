@@ -62,6 +62,12 @@ Source commit. If specified, source branch's head will be moved to this commit.
 
 **Default**: no default value, don't modify the `head` branch.
 
+### `force`
+
+Allow force-pushing the source (head) branch.
+
+**Default**: `true`
+
 ### `base`
 
 Target branch name, **without** `refs/heads/`.

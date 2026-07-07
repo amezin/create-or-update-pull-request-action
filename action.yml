@@ -39,6 +39,11 @@ inputs:
     description: Source commit. If specified, source branch's head will be moved to this commit
     required: false
 
+  force:
+    description: Allow force-pushing the source (head) branch
+    default: 'true'
+    required: true
+
   base:
     description: Target branch name, without `refs/heads/`
     default: ${{ github.event.repository.default_branch }}

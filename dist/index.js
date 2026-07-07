@@ -38431,37 +38431,36 @@ class Repository {
     }
     async updatePullRequest(pull, options) {
         const { octokit, owner, repo } = this;
-        const { title, body, headSha } = options;
+        const { title, body, headSha, force } = options;
+        let updated = pull;
+        // Head should be updated first, may fail when force=false
+        // Not covered by tests yet
         if (!pull.head.sha.startsWith(headSha)) {
-            // Note: after branch update, we always perform PR update,
-            // to get fully updated PR object (full head SHA, merge SHA, etc)
-            await this.updateRef(`heads/${pull.head.ref}`, headSha, true);
-            let updated = await this.getPullRequest(pull.number);
-            for (let i = 0; i < POLL_REPEATS && pull.head.sha === updated.head.sha; i++) {
-                await (0,promises_namespaceObject.setTimeout)(POLL_INTERVAL_MS);
-                updated = await this.getPullRequest(pull.number);
-            }
-            if (pull.head.sha === updated.head.sha) {
-                throw new Error('Failed to update pull request head');
-            }
-            pull = updated;
+            await this.updateRef(`heads/${pull.head.ref}`, headSha, force);
         }
-        if (pull.title === title && pull.body === body) {
-            return pull;
+        if (pull.title !== title || pull.body !== body) {
+            const { data } = await octokit.rest.pulls.update({
+                repo,
+                owner,
+                pull_number: pull.number,
+                title,
+                body,
+            });
+            updated = data;
         }
-        const { data } = await octokit.rest.pulls.update({
-            repo,
-            owner,
-            pull_number: pull.number,
-            title,
-            body,
-        });
+        for (let i = 0; i < POLL_REPEATS && !updated.head.sha.startsWith(headSha); i++) {
+            await (0,promises_namespaceObject.setTimeout)(POLL_INTERVAL_MS);
+            updated = await this.getPullRequest(pull.number);
+        }
+        if (!updated.head.sha.startsWith(headSha)) {
+            throw new Error('Pull request head did not update to the expected value');
+        }
         octokit.log.info(
         // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
-        `Updated pull request #${data.number}: ${data.html_url}`);
-        return data;
+        `Updated pull request #${updated.number}: ${updated.html_url}`);
+        return updated;
     }
-    async createOrUpdatePullRequest({ base, head, headSha, title, body, update, draft, }) {
+    async createOrUpdatePullRequest({ base, head, headSha, title, body, update, draft, force, }) {
         const existing = await this.findOpenPullRequest(base, head);
         if (!existing) {
             return await this.createPullRequest({
@@ -38480,6 +38479,7 @@ class Repository {
             title,
             body,
             headSha,
+            force,
         });
     }
     async listMatchingRefs(ref) {
@@ -38538,6 +38538,7 @@ async function run() {
     const body = getInput('body', { required: true });
     const update = getBooleanInput('update', { required: true });
     const draft = getBooleanInput('draft', { required: true });
+    const force = getBooleanInput('force', { required: true });
     const github = octokit_getOctokit(token, {
         userAgent: `${package_namespaceObject.UU}/v${package_namespaceObject.rE}`,
     });
@@ -38550,6 +38551,7 @@ async function run() {
         body,
         update,
         draft,
+        force,
     });
     setOutput('number', pr.number);
     setOutput('url', pr.url);
