@@ -38366,7 +38366,7 @@ function octokit_getOctokit(token, options, ...additionalPlugins) {
 }
 
 ;// CONCATENATED MODULE: ./package.json
-const package_namespaceObject = /*#__PURE__*/JSON.parse('{"UU":"@amezin/create-or-update-pull-request-action","rE":"2.1.0"}');
+const package_namespaceObject = /*#__PURE__*/JSON.parse('{"UU":"@amezin/create-or-update-pull-request-action","rE":"2.2.0"}');
 ;// CONCATENATED MODULE: ./src/main.ts
 
 
