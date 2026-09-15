@@ -19,5 +19,6 @@
     }
   ],
   "postUpdateOptions": ["npmDedupe", "npmInstallTwice"],
-  "platformAutomerge": false
+  "platformAutomerge": false,
+  "rebaseWhen": "never"
 }
