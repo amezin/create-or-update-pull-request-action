@@ -316,7 +316,7 @@ jobs:
 
       - name: Create pull request
         id: pr-create
-        uses: ./.
+        uses: $/.
         with:
           title: ${{ env.TITLE1 }}
           body: ${{ env.BODY1 }}
@@ -362,7 +362,7 @@ jobs:
       - name: 'Run action with new inputs, update PR'
         id: pr-update
         continue-on-error: ${{ matrix.success != 'success' }}
-        uses: ./.
+        uses: $/.
         with:
           title: ${{ env.TITLE2 }}
           body: ${{ env.BODY2 }}
